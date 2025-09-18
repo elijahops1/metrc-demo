@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Metrc API App - Azure Function with Terraform & GitHub Actions
 
 ## 🎯 Overview
@@ -650,3 +651,6 @@ metrc-api-app/
 ```
 
 This completes your comprehensive deployment guide for the Metrc API app!
+=======
+# metrc-demo
+>>>>>>> 358fab49a1af586104755772d7451c39979ebc66
