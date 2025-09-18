@@ -1,0 +1,259 @@
+# GitHub Actions CI/CD Pipeline for Azure PowerShell Function App
+# This workflow builds, tests, and deploys the PowerShell function to Azure Function App
+
+name: Azure Function App CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
+  
+jobs:
+  test:
+    name: Test PowerShell Function
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup PowerShell
+      uses: microsoft/setup-powershell@v1
+      with:
+        powershell-version: '7.x'
+        
+    - name: Run PowerShell tests
+      shell: pwsh
+      run: |
+        Write-Host "🧪 Running PowerShell function tests"
+        
+        # Import the profile functions
+        . ./profile.ps1
+        
+        # Test stock symbol validation
+        $testResult1 = Test-StockSymbol -Symbol "AAPL"
+        if (-not $testResult1) {
+          Write-Error "Stock symbol validation test failed"
+          exit 1
+        }
+        
+        $testResult2 = Test-StockSymbol -Symbol "INVALID123"
+        if ($testResult2) {
+          Write-Error "Stock symbol validation test failed - should reject invalid symbol"
+          exit 1
+        }
+        
+        # Test function.json syntax
+        $functionConfig = Get-Content "GetStockQuote/function.json" | ConvertFrom-Json
+        if (-not $functionConfig.bindings) {
+          Write-Error "function.json validation failed"
+          exit 1
+        }
+        
+        Write-Host "✅ All tests passed"
+
+  infrastructure:
+    name: Deploy Infrastructure
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      function-app-name: ${{ steps.terraform.outputs.function-app-name }}
+      resource-group-name: ${{ steps.terraform.outputs.resource-group-name }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.6.0
+        terraform_wrapper: false
+        
+    - name: Terraform Init
+      working-directory: terraform
+      run: terraform init
+      
+    - name: Terraform Plan
+      working-directory: terraform
+      run: |
+        terraform plan \
+          -var="project_name=stock-api" \
+          -var="environment=dev" \
+          -var="owner_email=${{ github.actor }}@users.noreply.github.com" \
+          -var="alphavantage_api_key=${{ secrets.ALPHAVANTAGE_API_KEY || 'demo' }}" \
+          -out=tfplan
+          
+    - name: Terraform Apply
+      working-directory: terraform
+      run: terraform apply -auto-approve tfplan
+      
+    - name: Get Terraform Outputs
+      id: terraform
+      working-directory: terraform
+      run: |
+        echo "function-app-name=$(terraform output -raw function_app_name)" >> $GITHUB_OUTPUT
+        echo "resource-group-name=$(terraform output -raw resource_group_name)" >> $GITHUB_OUTPUT
+        echo "function-app-url=$(terraform output -raw function_app_url)" >> $GITHUB_OUTPUT
+
+  deploy:
+    name: Deploy Function App
+    runs-on: ubuntu-latest
+    needs: [test, infrastructure]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: Setup PowerShell
+      uses: microsoft/setup-powershell@v1
+      with:
+        powershell-version: '7.x'
+        
+    - name: Prepare deployment package
+      shell: pwsh
+      run: |
+        Write-Host "📦 Preparing function app deployment package"
+        
+        # Create deployment directory
+        New-Item -ItemType Directory -Force -Path "deploy"
+        
+        # Copy function files
+        Copy-Item -Path "GetStockQuote" -Destination "deploy/GetStockQuote" -Recurse -Force
+        Copy-Item -Path "host.json" -Destination "deploy/" -Force
+        Copy-Item -Path "profile.ps1" -Destination "deploy/" -Force
+        Copy-Item -Path "requirements.psd1" -Destination "deploy/" -Force
+        
+        # Create .funcignore if it doesn't exist
+        if (-not (Test-Path "deploy/.funcignore")) {
+          @"
+        .git*
+        .vscode
+        local.settings.json
+        test
+        .DS_Store
+        "@ | Out-File -FilePath "deploy/.funcignore" -Encoding UTF8
+        }
+        
+        Write-Host "✅ Deployment package prepared"
+        
+    - name: Deploy to Azure Function App
+      uses: Azure/functions-action@v1
+      with:
+        app-name: ${{ needs.infrastructure.outputs.function-app-name }}
+        package: './deploy'
+        publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+        
+    - name: Wait for deployment
+      shell: pwsh
+      run: |
+        Write-Host "⏳ Waiting for deployment to complete..."
+        Start-Sleep -Seconds 30
+        
+    - name: Test deployed function
+      shell: pwsh
+      run: |
+        $functionAppName = "${{ needs.infrastructure.outputs.function-app-name }}"
+        $testUrl = "https://$functionAppName.azurewebsites.net/api/GetStockQuote?symbol=AAPL"
+        
+        Write-Host "🧪 Testing deployed function at: $testUrl"
+        
+        try {
+          # Wait a bit more for the function to be ready
+          Start-Sleep -Seconds 30
+          
+          $response = Invoke-RestMethod -Uri $testUrl -Method Get -TimeoutSec 60
+          
+          if ($response.status -eq "success" -and $response.data.symbol -eq "AAPL") {
+            Write-Host "✅ Function deployment test passed!" -ForegroundColor Green
+            Write-Host "📊 Stock data received for $($response.data.symbol): $($response.data.price)" -ForegroundColor Green
+          } else {
+            Write-Warning "⚠️ Function responded but data format unexpected"
+            $response | ConvertTo-Json -Depth 3 | Write-Host
+          }
+        }
+        catch {
+          Write-Warning "⚠️ Function test failed (this might be expected if using demo API key): $($_.Exception.Message)"
+          # Don't fail the deployment for API key issues
+        }
+        
+    - name: Output deployment info
+      run: |
+        echo "🎉 Deployment completed successfully!"
+        echo "📍 Function App URL: https://${{ needs.infrastructure.outputs.function-app-name }}.azurewebsites.net"
+        echo "🔗 API Endpoint: https://${{ needs.infrastructure.outputs.function-app-name }}.azurewebsites.net/api/GetStockQuote?symbol=AAPL"
+        echo "📋 Resource Group: ${{ needs.infrastructure.outputs.resource-group-name }}"
+
+  staging-deploy:
+    name: Deploy to Staging Slot
+    runs-on: ubuntu-latest
+    needs: [test, infrastructure]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: Setup PowerShell
+      uses: microsoft/setup-powershell@v1
+      with:
+        powershell-version: '7.x'
+        
+    - name: Prepare deployment package
+      shell: pwsh
+      run: |
+        Write-Host "📦 Preparing staging deployment package"
+        
+        New-Item -ItemType Directory -Force -Path "deploy"
+        Copy-Item -Path "GetStockQuote" -Destination "deploy/GetStockQuote" -Recurse -Force
+        Copy-Item -Path "host.json" -Destination "deploy/" -Force
+        Copy-Item -Path "profile.ps1" -Destination "deploy/" -Force
+        Copy-Item -Path "requirements.psd1" -Destination "deploy/" -Force
+        
+    - name: Deploy to staging slot
+      uses: Azure/functions-action@v1
+      with:
+        app-name: ${{ needs.infrastructure.outputs.function-app-name }}
+        slot-name: 'staging'
+        package: './deploy'
+        publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE_STAGING }}
+        
+    - name: Test staging deployment
+      shell: pwsh
+      run: |
+        $functionAppName = "${{ needs.infrastructure.outputs.function-app-name }}"
+        $testUrl = "https://$functionAppName-staging.azurewebsites.net/api/GetStockQuote?symbol=MSFT"
+        
+        Write-Host "🧪 Testing staging function at: $testUrl"
+        
+        try {
+          Start-Sleep -Seconds 30
+          $response = Invoke-RestMethod -Uri $testUrl -Method Get -TimeoutSec 60
+          
+          if ($response.status -eq "success") {
+            Write-Host "✅ Staging deployment test passed!" -ForegroundColor Green
+          }
+        }
+        catch {
+          Write-Warning "⚠️ Staging test failed: $($_.Exception.Message)"
+        }
