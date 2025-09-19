@@ -84,6 +84,43 @@ output "staging_slot_url" {
   value       = module.function_app.staging_slot_url
 }
 
+# Terraform Backend Configuration Outputs
+output "backend_config" {
+  description = "Backend configuration for migrating to remote state"
+  value = {
+    resource_group_name  = azurerm_resource_group.terraform_state.name
+    storage_account_name = azurerm_storage_account.terraform_state.name
+    container_name       = azurerm_storage_container.terraform_state.name
+    key                  = "${var.environment}/terraform.tfstate"
+  }
+}
+
+output "backend_migration_commands" {
+  description = "Commands to migrate to remote backend"
+  value = <<-EOT
+    
+    🚀 Backend Storage Created! Next Steps:
+    
+    1. Uncomment the backend block in metrc-api-infrastructure.tf:
+    
+    backend "azurerm" {
+      resource_group_name  = "${azurerm_resource_group.terraform_state.name}"
+      storage_account_name = "${azurerm_storage_account.terraform_state.name}"
+      container_name       = "${azurerm_storage_container.terraform_state.name}"
+      key                  = "${var.environment}/terraform.tfstate"
+    }
+    
+    2. Run: terraform init -migrate-state
+    3. Answer 'yes' when prompted to migrate state
+    
+    📍 Backend Details:
+    - Resource Group: ${azurerm_resource_group.terraform_state.name}
+    - Storage Account: ${azurerm_storage_account.terraform_state.name}
+    - Container: ${azurerm_storage_container.terraform_state.name}
+    
+  EOT
+}
+
 # Deployment Information
 output "deployment_info" {
   description = "Key deployment information"

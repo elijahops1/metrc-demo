@@ -15,13 +15,12 @@ terraform {
   }
   
   # Azure Backend Configuration for State Management
-  # Temporarily commented out since backend was destroyed
-  # backend "azurerm" {
-  #   resource_group_name  = "rg-terraform-state-dev"
-  #   storage_account_name = "tfstatedev1476"
-  #   container_name       = "tfstate"
-  #   key                  = "dev/terraform.tfstate"
-  # }
+  backend "azurerm" {
+    resource_group_name  = "rg-terraform-backend-dev"
+    storage_account_name = "tfbackenddev2987"
+    container_name       = "tfstate"
+    key                  = "dev/terraform.tfstate"
+  }
 }
 
 # Configure the Microsoft Azure Provider
@@ -41,6 +40,73 @@ provider "azurerm" {
 resource "random_integer" "suffix" {
   min = 1000
   max = 9999
+}
+
+# =============================================================================
+# TERRAFORM BACKEND STORAGE RESOURCES
+# These resources store the Terraform state file remotely in Azure
+# =============================================================================
+
+# Resource group for Terraform backend storage
+resource "azurerm_resource_group" "terraform_state" {
+  name     = "rg-terraform-backend-${var.environment}"
+  location = var.location
+
+  tags = {
+    Purpose     = "Terraform Backend Storage"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Owner       = var.owner_email
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# Storage account for Terraform state files
+resource "azurerm_storage_account" "terraform_state" {
+  name                     = "tfbackend${var.environment}${random_integer.suffix.result}"
+  resource_group_name      = azurerm_resource_group.terraform_state.name
+  location                 = azurerm_resource_group.terraform_state.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+  
+  # Security settings
+  min_tls_version                 = "TLS1_2"
+  allow_nested_items_to_be_public = false
+  
+  # Enable versioning for state file history
+  blob_properties {
+    versioning_enabled = true
+    
+    # Delete old versions after 30 days
+    delete_retention_policy {
+      days = 30
+    }
+    
+    container_delete_retention_policy {
+      days = 30
+    }
+  }
+
+  tags = {
+    Purpose     = "Terraform Backend Storage"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Owner       = var.owner_email
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# Storage container for the state files
+resource "azurerm_storage_container" "terraform_state" {
+  name                  = "tfstate"
+  storage_account_name  = azurerm_storage_account.terraform_state.name
+  container_access_type = "private"
 }
 
 # Local values for consistent naming and configuration
@@ -115,7 +181,7 @@ module "application_insights" {
   tags = local.common_tags
 }
 
-# Function App Module
+# Function App Module (with Free Plan F1 - within free tier limits)
 module "function_app" {
   source = "./modules/function-app"
   

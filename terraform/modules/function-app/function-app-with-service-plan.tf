@@ -6,9 +6,9 @@ resource "azurerm_service_plan" "this" {
   resource_group_name = var.resource_group_name
   location            = var.location
   
-  # Consumption plan settings for serverless execution
+  # Free plan settings - within free tier limits
   os_type  = "Windows"  # Required for PowerShell functions
-  sku_name = "Y1"       # Consumption (serverless) plan - pay per execution
+  sku_name = "F1"       # Free plan - no cost, limited resources
   
   tags = var.tags
 }
@@ -32,7 +32,7 @@ resource "azurerm_windows_function_app" "this" {
     }
     
     # Performance and scaling settings
-    always_on                = false  # Not available for consumption plan
+    always_on                = false  # Not available for Free plan
     use_32_bit_worker        = false  # Use 64-bit for better performance
     ftps_state              = "Disabled"  # Disable FTP for security
     http2_enabled           = true   # Enable HTTP/2 for better performance
