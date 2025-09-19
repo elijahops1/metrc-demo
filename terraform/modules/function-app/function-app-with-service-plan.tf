@@ -72,7 +72,7 @@ resource "azurerm_windows_function_app" "this" {
   
   # Prevent accidental deletion of the production function app
   lifecycle {
-    prevent_destroy = var.enable_deletion_protection
+    prevent_destroy = true
   }
 }
 

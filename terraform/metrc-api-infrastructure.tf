@@ -1,17 +1,5 @@
 # Azure PowerShell Function App Infrastructure
 # This Terraform configuration creates all resources needed for the Metrc API Function App
-# using modular architecture for better maintainability and reusability
-#
-# Modules Used:
-# - resource-group: Resource Group management
-# - storage-account: Storage Account for Function App [PROTECTED]
-# - application-insights: Monitoring and logging [PROTECTED]
-# - function-app: PowerShell Function App with Service Plan [PROTECTED]
-#
-# DELETION PROTECTION:
-# Critical resources are protected from accidental deletion using lifecycle prevent_destroy.
-# To disable protection, set var.enable_deletion_protection = false
-# To destroy protected resources, use: terraform destroy -target=resource_name -var="enable_deletion_protection=false"
 
 terraform {
   required_version = ">= 1.0"
@@ -35,6 +23,9 @@ provider "azurerm" {
       prevent_deletion_if_contains_resources = false
     }
   }
+  
+  # Skip automatic resource provider registration
+  skip_provider_registration = true
 }
 
 # Generate random suffix for globally unique names

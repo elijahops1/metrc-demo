@@ -11,6 +11,6 @@ resource "azurerm_application_insights" "this" {
   
   # Prevent accidental deletion of monitoring data and configuration
   lifecycle {
-    prevent_destroy = var.enable_deletion_protection
+    prevent_destroy = true
   }
 }

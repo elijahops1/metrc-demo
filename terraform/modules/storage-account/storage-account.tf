@@ -13,8 +13,8 @@ resource "azurerm_storage_account" "this" {
   
   tags = var.tags
   
-  # Prevent accidental deletion of storage account containing function data
+  # Prevent accidental deletion of storage account
   lifecycle {
-    prevent_destroy = var.enable_deletion_protection
+    prevent_destroy = true
   }
 }
