@@ -71,9 +71,9 @@ resource "azurerm_windows_function_app" "this" {
   tags = var.tags
   
   # Prevent accidental deletion of the production function app
-  # lifecycle {
-  #   prevent_destroy = true
-  # }
+  lifecycle {
+    # prevent_destroy = true  # Commented out to allow destruction if needed
+  }
 }
 
 # Optional: Function App Slot for staging deployments

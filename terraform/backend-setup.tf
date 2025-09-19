@@ -14,9 +14,9 @@ resource "azurerm_resource_group" "terraform_state" {
     Owner       = var.owner_email
   }
 
-  # lifecycle {
-  #   prevent_destroy = true
-  # }
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Storage account specifically for Terraform state files
@@ -53,9 +53,9 @@ resource "azurerm_storage_account" "terraform_state" {
     Owner       = var.owner_email
   }
 
-  # lifecycle {
-  #   prevent_destroy = true
-  # }
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Storage container for the state files
