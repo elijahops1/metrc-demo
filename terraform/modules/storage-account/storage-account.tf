@@ -15,6 +15,6 @@ resource "azurerm_storage_account" "this" {
   
   # Prevent accidental deletion of storage account
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false
   }
 }

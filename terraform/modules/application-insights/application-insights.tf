@@ -11,6 +11,9 @@ resource "azurerm_application_insights" "this" {
   
   # Prevent accidental deletion of monitoring data and configuration
   lifecycle {
-    prevent_destroy = true
+    # prevent_destroy = true
+    ignore_changes = [
+      workspace_id  # Ignore changes to workspace_id as it can't be removed once set
+    ]
   }
 }

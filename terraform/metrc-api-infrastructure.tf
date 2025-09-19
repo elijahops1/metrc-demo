@@ -13,6 +13,14 @@ terraform {
       version = "~> 3.1"
     }
   }
+  
+  # Azure Backend Configuration for State Management
+  backend "azurerm" {
+    resource_group_name  = "rg-terraform-state-dev"
+    storage_account_name = "tfstatedev1476"
+    container_name       = "tfstate"
+    key                  = "dev/terraform.tfstate"
+  }
 }
 
 # Configure the Microsoft Azure Provider
