@@ -87,10 +87,10 @@ jobs:
       working-directory: terraform
       run: |
         terraform plan \
-          -var="project_name=stock-api" \
+          -var="project_name=metrc-api-app" \
           -var="environment=dev" \
-          -var="owner_email=${{ github.actor }}@users.noreply.github.com" \
-          -var="alphavantage_api_key=${{ secrets.ALPHAVANTAGE_API_KEY || 'demo' }}" \
+          -var="owner_email=${{ secrets.TF_VAR_owner_email || 'elijah.ops1@gmail.com' }}" \
+          -var="alphavantage_api_key=${{ secrets.TF_VAR_alphavantage_api_key || 'demo' }}" \
           -out=tfplan
           
     - name: Terraform Apply
